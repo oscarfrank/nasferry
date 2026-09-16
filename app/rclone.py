@@ -418,7 +418,7 @@ class RcloneManager:
         if os.name == "nt":
             raise RuntimeError(
                 "Refusing to copy from Windows. File data would pass through this PC. "
-                "Install copy-server on TrueNAS SCALE so it reads /mnt/zeus locally and writes to the TerraMaster over the LAN."
+                "Install copy-server on TrueNAS SCALE so it reads the pool locally and writes to the other NAS over the LAN."
             )
 
     async def start_copy(self, dry_run: bool = False) -> dict[str, Any]:
