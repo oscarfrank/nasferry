@@ -6,13 +6,15 @@ It **adds and updates** files. It never deletes extras on the destination. Files
 
 ## Install on TrueNAS SCALE
 
-1. Put this folder on the NAS you copy from, on a writable dataset, for example `/mnt/<pool>/Dump/copy-server` (copy, unzip, or `git clone`).
+1. Put this folder anywhere writable on the NAS you copy from, for example `/mnt/<pool>/copy-server`. Avoid `ix-applications`.
 
 2. **System → Shell** or SSH (do **not** `apt install` anything):
 
    ```sh
-   sudo python3 /mnt/<pool>/Dump/copy-server/nas.py
+   sudo python3 /mnt/<pool>/copy-server/nas.py
    ```
+
+   Use the real path you chose. After the first run, `sudo /root/copy-server` remembers it.
 
 3. Open `http://<nas-ip>:8080`. Pick the local folder, then the other NAS share. **Start / resume copy**.
 

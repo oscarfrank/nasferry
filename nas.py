@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Start, restart, or stop copy-server on TrueNAS.
 
-One command from System → Shell or SSH:
+One command from System → Shell or SSH, from wherever you put this folder:
 
-    sudo python3 /mnt/<pool>/Dump/copy-server/nas.py
+    sudo python3 /mnt/<pool>/copy-server/nas.py
 
 After the first run you can also use:
 
@@ -23,7 +23,6 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-DEFAULT_ROOT = Path("/mnt/zeus/Dump/copy-server")
 RUNTIME = Path(os.environ.get("COPY_SERVER_RUNTIME", "/root/copy-server-runtime"))
 LAUNCHER = Path("/root/copy-server")
 PORT = int(os.environ.get("COPY_SERVER_PORT", "8080"))
@@ -53,9 +52,7 @@ def app_root() -> Path:
     here = Path(__file__).resolve().parent
     if (here / "app" / "main.py").is_file():
         return here
-    if (DEFAULT_ROOT / "app" / "main.py").is_file():
-        return DEFAULT_ROOT
-    die(f"Cannot find copy-server (looked at {here} and {DEFAULT_ROOT})")
+    die(f"Cannot find copy-server (looked at {here}). Run nas.py from the folder that contains app/.")
 
 
 def dashboard_url() -> str:
