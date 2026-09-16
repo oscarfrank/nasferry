@@ -1,9 +1,0 @@
-.git
-.env
-data
-__pycache__
-.venv
-venv
-*.log
-.DS_Store
-README.md
