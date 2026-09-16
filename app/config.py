@@ -143,7 +143,7 @@ class Settings(BaseSettings):
     exclude_system: bool = True
 
     rclone_rc: str = "http://127.0.0.1:5572"
-    public_port: int = 8080
+    public_port: int = Field(default=8080, ge=1, le=65535)
 
     source_label: str = Field(default="This NAS")
     dest_label: str = Field(default="Backup NAS")

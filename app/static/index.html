@@ -3,18 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Zeus mirror</title>
-  <link rel="stylesheet" href="/static/styles.css?v=7" />
+  <title>nasferry</title>
+  <link rel="stylesheet" href="/static/styles.css?v=9" />
 </head>
 <body>
   <div class="shell">
     <header class="top">
       <div>
         <p class="kicker">NAS to NAS copy</p>
-        <h1>Zeus mirror</h1>
-        <p class="route" id="route">TrueNAS → TerraMaster</p>
+        <h1>nasferry</h1>
+        <p class="route" id="route">Source NAS → backup NAS</p>
       </div>
-      <div class="status-pill" id="status-pill">connecting</div>
+      <div class="top-actions">
+        <div class="status-pill" id="status-pill">connecting</div>
+        <button type="button" class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.8 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.92 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.34.6.22l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.5.42h3.8c.24 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.25.1.46 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/>
+          </svg>
+        </button>
+      </div>
     </header>
 
     <div class="banner hidden" id="windows-banner">
@@ -48,7 +55,7 @@
         </div>
         <div class="picker" id="lan-hosts"></div>
         <div class="form-grid">
-          <label>Host or IP<input id="dest-host" placeholder="10.37.1.41" /></label>
+          <label>Host or IP<input id="dest-host" placeholder="192.168.1.50" /></label>
           <label>Username<input id="dest-user" placeholder="editor" /></label>
           <label>Password<input id="dest-pass" type="password" /></label>
           <label>Domain<input id="dest-domain" value="WORKGROUP" /></label>
@@ -63,17 +70,10 @@
       </div>
 
       <div id="wiz-3" class="hidden">
-        <h3>Options</h3>
-        <label class="check"><input type="checkbox" id="opt-exclude-system" checked /> Skip TrueNAS app folders (ix-applications)</label>
-        <p class="hint">Folder names match anywhere in the tree, not only at the share root. CacheClip is already skipped.</p>
-        <div class="chips" id="wiz-builtin"></div>
-        <div class="chips" id="wiz-custom"></div>
-        <div class="exclude-add">
-          <input id="wiz-exclude-input" placeholder="Folder name to skip, e.g. CacheClip" />
-          <button type="button" id="btn-wiz-exclude-add">Add skip</button>
-        </div>
+        <h3>Looks right?</h3>
         <p class="path" id="review-source"></p>
         <p class="path dest" id="review-dest"></p>
+        <p class="hint">Skip folders (CacheClip and extras) are in Settings after you save.</p>
       </div>
 
       <div class="actions">
@@ -180,24 +180,14 @@
         <h2>Controls</h2>
         <p class="path" id="source-fs"></p>
         <p class="path dest" id="dest-fs"></p>
-        <h3 class="subhead">Skip folders</h3>
-        <p class="hint">Names match at any depth. Built-in skips (including CacheClip) stay on. Extra names apply on the next copy or scan.</p>
-        <div class="chips" id="dash-builtin"></div>
-        <div class="chips" id="dash-custom"></div>
-        <div class="exclude-add">
-          <input id="exclude-input" placeholder="Folder name, e.g. CacheClip" />
-          <button type="button" id="btn-exclude-add">Skip folder</button>
-        </div>
-        <label class="check"><input type="checkbox" id="dash-exclude-system" /> Skip TrueNAS app folders (ix-applications)</label>
         <div class="actions">
-          <button id="btn-setup" class="ghost" type="button">Change folders</button>
           <button id="btn-test" type="button">Test connection</button>
           <button id="btn-scan" type="button">Scan sizes</button>
           <button id="btn-dry" type="button">Dry run</button>
           <button id="btn-start" class="primary" type="button">Start / resume copy</button>
           <button id="btn-stop" class="danger" type="button">Stop</button>
         </div>
-        <p class="hint">Copy never deletes files on TerraMaster. Existing files with the same size are skipped. Smaller leftover files from the old backup are treated as incomplete and recopied.</p>
+        <p class="hint">Copy never deletes extras on the destination. Matching sizes are skipped. Folders and skip lists are in Settings (gear).</p>
         <pre id="test-result" class="log mini hidden"></pre>
       </article>
     </section>
@@ -223,6 +213,53 @@
     </section>
     </div>
   </div>
-  <script src="/static/app.js?v=7"></script>
+
+  <div class="sheet-backdrop hidden" id="settings-backdrop">
+    <aside class="sheet" id="settings" role="dialog" aria-labelledby="settings-title">
+      <div class="sheet-head">
+        <div>
+          <p class="kicker">Setup</p>
+          <h2 id="settings-title">Settings</h2>
+        </div>
+        <button type="button" class="icon-btn" id="btn-settings-close" aria-label="Close settings">×</button>
+      </div>
+      <p class="banner error hidden" id="settings-error"></p>
+
+      <section class="sheet-block">
+        <h3>Folders</h3>
+        <div class="setting-card">
+          <div class="space-head">
+            <span class="badge source">Source</span>
+            <span>This NAS</span>
+          </div>
+          <p class="path" id="set-source-path">Not set</p>
+          <button type="button" id="btn-change-source">Change source folder</button>
+        </div>
+        <div class="setting-card">
+          <div class="space-head">
+            <span class="badge dest">Destination</span>
+            <span>Backup NAS</span>
+          </div>
+          <p class="path dest" id="set-dest-path">Not set</p>
+          <button type="button" id="btn-change-dest">Change destination share</button>
+        </div>
+        <p class="hint" id="settings-folder-hint">Stop the copy before changing folders.</p>
+      </section>
+
+      <section class="sheet-block">
+        <h3>Skip folders</h3>
+        <p class="hint">Type a name and press Enter. It is skipped anywhere in the tree, not only at the root. Takes effect on the next copy or scan.</p>
+        <div class="exclude-add">
+          <input id="exclude-input" placeholder="Folder name, e.g. CacheClip" autocomplete="off" />
+          <button type="button" class="primary" id="btn-exclude-add">Skip</button>
+        </div>
+        <div class="chips" id="dash-custom"></div>
+        <label class="check"><input type="checkbox" id="dash-exclude-system" /> Skip TrueNAS app folders (ix-applications)</label>
+        <p class="hint">Always skipped</p>
+        <div class="chips" id="dash-builtin"></div>
+      </section>
+    </aside>
+  </div>
+  <script src="/static/app.js?v=9"></script>
 </body>
 </html>

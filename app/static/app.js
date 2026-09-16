@@ -163,13 +163,13 @@ function renderSpace(data) {
 
 function activityHint(data) {
   if (data.activity === "checking") {
-    return "Comparing files already on TerraMaster. Matching sizes are skipped; this can look idle while checks climb.";
+    return "Comparing files already on the backup NAS. Matching sizes are skipped; this can look idle while checks climb.";
   }
   if (data.activity === "copying") {
     return "Copying missing or incomplete files over the LAN.";
   }
   if (data.activity === "scanning") {
-    return "Walking both trees to measure source size vs what is already in zeus. This can take a long time on a full NAS.";
+    return "Walking both trees to measure source size vs what is already on the backup NAS. This can take a long time on a full NAS.";
   }
   if (data.activity === "stopping") {
     return "Stop requested. rclone will finish the current file, then halt.";
@@ -188,6 +188,8 @@ async function refresh() {
   $("route").textContent = `${data.source_label} → ${data.dest_label}`;
   $("source-fs").textContent = `src  ${data.source_fs}`;
   $("dest-fs").textContent = `dst  ${data.dest_fs}`;
+  if ($("set-source-path")) $("set-source-path").textContent = data.source_fs || "Not set";
+  if ($("set-dest-path")) $("set-dest-path").textContent = data.dest_fs || "Not set";
   $("windows-banner").classList.toggle("hidden", !data.windows_host);
 
   const stopNoise = (text) =>
@@ -248,7 +250,14 @@ async function refresh() {
   $("btn-dry").disabled = busy;
   $("btn-stop").disabled = !busy;
   $("btn-scan").disabled = data.scan.running;
-  if ($("btn-setup")) $("btn-setup").disabled = busy;
+  const changeLocked = busy;
+  if ($("btn-change-source")) $("btn-change-source").disabled = changeLocked;
+  if ($("btn-change-dest")) $("btn-change-dest").disabled = changeLocked;
+  if ($("settings-folder-hint")) {
+    $("settings-folder-hint").textContent = changeLocked
+      ? "Stop the copy before changing folders."
+      : "Changing folders does not delete anything already copied.";
+  }
 }
 
 async function refreshLog() {
@@ -291,7 +300,6 @@ $("btn-test").addEventListener("click", async (event) => {
   });
 });
 $("btn-log").addEventListener("click", () => refreshLog());
-$("btn-setup").addEventListener("click", () => showWizard(true));
 
 const wiz = {
   step: 1,
@@ -326,9 +334,12 @@ function lockedChips(names) {
 }
 
 function customChips(names, attr) {
-  return (names || [])
-    .map((name) => `<span class="chip">${escapeHtml(name)} <button type="button" data-name="${escapeHtml(name)}" ${attr} aria-label="Stop skipping ${escapeHtml(name)}">×</button></span>`)
-    .join("") || `<span class="chip locked">No extra folders</span>`;
+  if (!names || !names.length) {
+    return `<span class="chip locked">None extra — type a name above</span>`;
+  }
+  return names
+    .map((name) => `<span class="chip" title="Remove">${escapeHtml(name)} <button type="button" data-name="${escapeHtml(name)}" ${attr} aria-label="Stop skipping ${escapeHtml(name)}">×</button></span>`)
+    .join("");
 }
 
 function builtinList(setup) {
@@ -354,22 +365,15 @@ function renderDashExcludes(setup) {
     $("dash-exclude-system").checked = setup.exclude_system !== false;
   }
   $("dash-custom").querySelectorAll("[data-dash-remove]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
       saveDashExcludes(extras.filter((name) => name !== btn.dataset.name));
     });
   });
-}
-
-function renderWizExcludes() {
-  $("wiz-builtin").innerHTML = lockedChips([
-    ...wiz.builtin,
-    ...(wiz.excludeSystem ? wiz.system : []),
-  ]);
-  $("wiz-custom").innerHTML = customChips(wiz.extraExcludes, "data-wiz-remove");
-  $("wiz-custom").querySelectorAll("[data-wiz-remove]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      wiz.extraExcludes = wiz.extraExcludes.filter((name) => name !== btn.dataset.name);
-      renderWizExcludes();
+  $("dash-custom").querySelectorAll(".chip:not(.locked)").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const btn = chip.querySelector("[data-dash-remove]");
+      if (btn) saveDashExcludes(extras.filter((name) => name !== btn.dataset.name));
     });
   });
 }
@@ -398,8 +402,19 @@ async function saveDashExcludes(extras) {
   }
 }
 
-async function showWizard(force) {
+function openSettings() {
+  $("settings-backdrop").classList.remove("hidden");
+  $("exclude-input").focus();
+}
+
+function closeSettings() {
+  $("settings-backdrop").classList.add("hidden");
+  $("settings-error").classList.add("hidden");
+}
+
+async function showWizard(force, startStep = 1) {
   if (!force) return;
+  closeSettings();
   try {
     const setup = await api("/api/setup");
     wiz.sourcePath = setup.source_path || "";
@@ -417,24 +432,25 @@ async function showWizard(force) {
     $("dest-user").value = wiz.destUser;
     $("dest-domain").value = wiz.destDomain;
     $("dest-pass").placeholder = setup.dest_smb_pass_set ? "Leave blank to keep current password" : "";
-    $("opt-exclude-system").checked = wiz.excludeSystem;
     wiz.canCancel = setup.complete !== false;
   } catch (err) {
     toast(err.message);
   }
-  wiz.step = 1;
+  wiz.step = startStep === 2 ? 2 : 1;
   $("wizard").classList.remove("hidden");
   $("monitor").classList.add("hidden");
+  $("btn-settings").classList.add("hidden");
   renderWiz();
-  loadDisks().catch((err) => toast(err.message));
-  if (wiz.sourcePath) {
-    loadLocalFolders(wiz.sourcePath).catch(() => {});
+  if (wiz.step === 1) {
+    loadDisks().catch((err) => toast(err.message));
+    if (wiz.sourcePath) loadLocalFolders(wiz.sourcePath).catch(() => {});
   }
 }
 
 function hideWizard() {
   $("wizard").classList.add("hidden");
   $("monitor").classList.remove("hidden");
+  $("btn-settings").classList.remove("hidden");
   refresh().catch(() => {});
 }
 
@@ -452,7 +468,6 @@ function renderWiz() {
     : "No share selected";
   $("review-source").textContent = `from  ${wiz.sourcePath}`;
   $("review-dest").textContent = `to    ${wiz.destHost}/${wiz.destShare}${wiz.destPath ? "/" + wiz.destPath : ""}`;
-  if (wiz.step === 3) renderWizExcludes();
 }
 
 function diskCard(disk, selected) {
@@ -585,21 +600,17 @@ $("btn-wiz-back").addEventListener("click", () => {
 });
 $("btn-wiz-cancel").addEventListener("click", () => hideWizard());
 
-$("btn-wiz-exclude-add").addEventListener("click", () => {
-  wiz.extraExcludes = addExcludeName(wiz.extraExcludes, $("wiz-exclude-input").value);
-  $("wiz-exclude-input").value = "";
-  renderWizExcludes();
+$("btn-settings").addEventListener("click", () => openSettings());
+$("btn-settings-close").addEventListener("click", () => closeSettings());
+$("settings-backdrop").addEventListener("click", (event) => {
+  if (event.target === $("settings-backdrop")) closeSettings();
 });
-$("wiz-exclude-input").addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    $("btn-wiz-exclude-add").click();
-  }
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (!$("settings-backdrop").classList.contains("hidden")) closeSettings();
 });
-$("opt-exclude-system").addEventListener("change", () => {
-  wiz.excludeSystem = $("opt-exclude-system").checked;
-  renderWizExcludes();
-});
+$("btn-change-source").addEventListener("click", () => showWizard(true, 1));
+$("btn-change-dest").addEventListener("click", () => showWizard(true, 2));
 $("btn-exclude-add").addEventListener("click", async () => {
   const setup = await api("/api/setup").catch(() => ({ extra_excludes: [] }));
   const extras = addExcludeName(setup.extra_excludes || [], $("exclude-input").value);
@@ -641,7 +652,7 @@ $("btn-wiz-next").addEventListener("click", async () => {
       renderWiz();
       return;
     }
-    wiz.excludeSystem = $("opt-exclude-system").checked;
+    wiz.excludeSystem = wiz.excludeSystem !== false;
     await api("/api/setup", {
       method: "POST",
       body: JSON.stringify({
@@ -660,6 +671,7 @@ $("btn-wiz-next").addEventListener("click", async () => {
     });
     $("wizard").classList.add("hidden");
     $("monitor").classList.remove("hidden");
+    $("btn-settings").classList.remove("hidden");
     $("error-banner").classList.add("hidden");
     await refresh();
     await refreshLog();
@@ -669,8 +681,10 @@ $("btn-wiz-next").addEventListener("click", async () => {
 });
 
 function toast(message) {
-  $("error-banner").textContent = message;
-  $("error-banner").classList.remove("hidden");
+  const settingsOpen = !$("settings-backdrop").classList.contains("hidden");
+  const banner = settingsOpen ? $("settings-error") : $("error-banner");
+  banner.textContent = message;
+  banner.classList.remove("hidden");
 }
 
 async function boot() {
@@ -684,6 +698,7 @@ async function boot() {
     wiz.canCancel = false;
     $("wizard").classList.remove("hidden");
     $("monitor").classList.add("hidden");
+    $("btn-settings").classList.add("hidden");
     renderWiz();
     await loadDisks();
     return;

@@ -34,6 +34,69 @@ body {
   gap: 16px;
   margin-bottom: 18px;
 }
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--text);
+}
+.icon-btn:hover { border-color: #4a5b6c; color: var(--accent); }
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 12, 0.62);
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+}
+.sheet-backdrop.hidden { display: none; }
+.sheet {
+  width: min(440px, 100%);
+  height: 100%;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 22px 20px 40px;
+  overflow: auto;
+}
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.sheet-head h2 { margin: 0; font-size: 22px; }
+.sheet-block { margin-top: 22px; }
+.sheet-block h3 { margin: 0 0 10px; font-size: 14px; font-weight: 650; }
+.setting-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.setting-card .path { margin: 8px 0 10px; }
+.setting-card button { width: 100%; }
+.chip { cursor: default; }
+.chip:not(.locked) { cursor: pointer; }
+.chip:not(.locked):hover { border-color: var(--danger); }
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
 
 .kicker {
   text-transform: uppercase;
@@ -386,4 +449,5 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   .form-grid { grid-template-columns: 1fr; }
   .space-grid { grid-template-columns: 1fr; }
   .space-facts { grid-template-columns: 1fr; }
+  .sheet { width: 100%; }
 }

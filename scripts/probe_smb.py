@@ -1,4 +1,4 @@
-"""Probe TrueNAS and TerraMaster SMB from this PC. Does not print passwords."""
+"""Probe source and destination SMB from this PC. Does not print passwords."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def main() -> int:
     print(f"DEST_SMB_USER={env.get('DEST_SMB_USER')}")
     print()
 
-    for host, label in ((source_host, "TrueNAS"), (dest_host, "TerraMaster")):
+    for host, label in ((source_host, "source NAS"), (dest_host, "backup NAS")):
         print(f"== ports on {label} {host} ==")
         for port in (445, 139, 22, 80, 443, 8080):
             print(f"  {port}: {'open' if tcp(host, port) else 'closed'}")
@@ -82,14 +82,14 @@ def main() -> int:
             return []
 
     source_shares = list_server(
-        "TrueNAS",
+        "source NAS",
         source_host,
         env.get("SOURCE_SMB_USER", ""),
         env.get("SOURCE_SMB_PASS", ""),
         env.get("SOURCE_SMB_DOMAIN", "WORKGROUP"),
     )
     dest_shares = list_server(
-        "TerraMaster",
+        "backup NAS",
         dest_host,
         env.get("DEST_SMB_USER", ""),
         env.get("DEST_SMB_PASS", ""),
@@ -132,14 +132,13 @@ def main() -> int:
 
     print()
     for share in source_shares:
-        peek("TrueNAS", source_host, env["SOURCE_SMB_USER"], env["SOURCE_SMB_PASS"], share)
+        peek("source NAS", source_host, env["SOURCE_SMB_USER"], env["SOURCE_SMB_PASS"], share)
     print()
     dest_path = env.get("DEST_SMB_PATH", "").strip()
     for share in dest_shares:
-        peek("TerraMaster", dest_host, env["DEST_SMB_USER"], env["DEST_SMB_PASS"], share)
+        peek("backup NAS", dest_host, env["DEST_SMB_USER"], env["DEST_SMB_PASS"], share)
         if dest_path and dest_path.lower() != share.lower():
-            peek("TerraMaster", dest_host, env["DEST_SMB_USER"], env["DEST_SMB_PASS"], share, dest_path)
-        # If a share is named zeus, also peek it (already covered by loop)
+            peek("backup NAS", dest_host, env["DEST_SMB_USER"], env["DEST_SMB_PASS"], share, dest_path)
 
     return 0
 

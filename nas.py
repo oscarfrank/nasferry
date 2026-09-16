@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Start, restart, or stop copy-server on TrueNAS.
+"""Start, restart, or stop nasferry on TrueNAS.
 
 One command from System → Shell or SSH, from wherever you put this folder:
 
-    sudo python3 /mnt/<pool>/copy-server/nas.py
+    sudo python3 /mnt/<pool>/nasferry/nas.py
 
 After the first run you can also use:
 
-    sudo /root/copy-server
+    sudo /root/nasferry
 """
 
 from __future__ import annotations
@@ -23,9 +23,21 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-RUNTIME = Path(os.environ.get("COPY_SERVER_RUNTIME", "/root/copy-server-runtime"))
-LAUNCHER = Path("/root/copy-server")
-PORT = int(os.environ.get("COPY_SERVER_PORT", "8080"))
+
+def _runtime_dir() -> Path:
+    env = os.environ.get("NASFERRY_RUNTIME") or os.environ.get("COPY_SERVER_RUNTIME")
+    if env:
+        return Path(env)
+    old = Path("/root/copy-server-runtime")
+    new = Path("/root/nasferry-runtime")
+    if old.is_dir() and not new.is_dir():
+        return old
+    return new
+
+
+RUNTIME = _runtime_dir()
+LAUNCHER = Path("/root/nasferry")
+OLD_LAUNCHER = Path("/root/copy-server")
 PID_FILE = RUNTIME / "uvicorn.pid"
 DATA_DIR = RUNTIME / "data"
 STATE_FILE = DATA_DIR / "state.json"
@@ -46,23 +58,61 @@ def ensure_root() -> None:
 
 
 def app_root() -> Path:
-    env = os.environ.get("COPY_SERVER_ROOT")
+    env = os.environ.get("NASFERRY_ROOT") or os.environ.get("COPY_SERVER_ROOT")
     if env:
         return Path(env)
     here = Path(__file__).resolve().parent
     if (here / "app" / "main.py").is_file():
         return here
-    die(f"Cannot find copy-server (looked at {here}). Run nas.py from the folder that contains app/.")
+    die(f"Cannot find nasferry (looked at {here}). Run nas.py from the folder that contains app/.")
 
 
-def dashboard_url() -> str:
+def load_env_file(root: Path) -> None:
+    path = root / ".env"
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'").strip('"')
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def listen_port() -> int:
+    raw = os.environ.get("COPY_SERVER_PORT") or os.environ.get("PUBLIC_PORT") or "8080"
+    try:
+        port = int(raw)
+    except ValueError:
+        die(f"Invalid PUBLIC_PORT: {raw}")
+    if not 1 <= port <= 65535:
+        die(f"PUBLIC_PORT must be 1–65535, got {port}")
+    return port
+
+
+def port_in_use(port: int) -> bool:
+    sock = socket.socket()
+    try:
+        sock.bind(("0.0.0.0", port))
+    except OSError:
+        return True
+    finally:
+        sock.close()
+    return False
+
+
+def dashboard_url(port: int | None = None) -> str:
+    port = port or listen_port()
     try:
         ip = socket.gethostbyname(socket.gethostname())
     except OSError:
         ip = "<nas-ip>"
     if ip.startswith("127."):
         ip = "<nas-ip>"
-    return f"http://{ip}:{PORT}"
+    return f"http://{ip}:{port}"
 
 
 def pid_alive(pid: int) -> bool:
@@ -86,7 +136,7 @@ def current_pid() -> int | None:
 def stop() -> None:
     pid = current_pid()
     if not pid:
-        print("copy-server is not running")
+        print("nasferry is not running")
         PID_FILE.unlink(missing_ok=True)
         return
     os.kill(pid, 15)
@@ -101,6 +151,8 @@ def stop() -> None:
 
 
 def status() -> None:
+    root = app_root()
+    load_env_file(root)
     pid = current_pid()
     if pid:
         print(f"Running PID {pid}")
@@ -186,15 +238,20 @@ def clear_stale_errors() -> None:
 def install_launcher(root: Path) -> None:
     body = (
         "#!/bin/sh\n"
+        f'export NASFERRY_ROOT="{root}"\n'
         f'export COPY_SERVER_ROOT="{root}"\n'
         f'exec {sys.executable} "{root / "nas.py"}" "$@"\n'
     )
     LAUNCHER.write_text(body)
     os.chmod(LAUNCHER, 0o755)
+    OLD_LAUNCHER.write_text("#!/bin/sh\nexec /root/nasferry \"$@\"\n")
+    os.chmod(OLD_LAUNCHER, 0o755)
 
 
 def start() -> None:
     root = app_root()
+    load_env_file(root)
+    port = listen_port()
     RUNTIME.mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     install_launcher(root)
@@ -204,13 +261,26 @@ def start() -> None:
     if current_pid():
         print("Restarting ...")
         stop()
+    busy = True
+    for _ in range(15):
+        if not port_in_use(port):
+            busy = False
+            break
+        time.sleep(0.2)
+    if busy:
+        die(
+            f"Port {port} is already in use. Set PUBLIC_PORT in {root / '.env'} "
+            "to a free port, then run this command again."
+        )
     env = os.environ.copy()
     env["DATA_DIR"] = str(DATA_DIR)
     env["RCLONE_BIN"] = str(RCLONE_BIN)
+    env["PUBLIC_PORT"] = str(port)
+    env["COPY_SERVER_PORT"] = str(port)
     env["PATH"] = f"{RUNTIME}:{env.get('PATH', '')}"
     log = WEB_LOG.open("ab")
     proc = subprocess.Popen(
-        [str(uvicorn), "app.main:app", "--host", "0.0.0.0", "--port", str(PORT)],
+        [str(uvicorn), "app.main:app", "--host", "0.0.0.0", "--port", str(port)],
         cwd=str(root),
         env=env,
         stdout=log,
@@ -222,7 +292,7 @@ def start() -> None:
     if proc.poll() is not None:
         die(f"Dashboard exited immediately. See {WEB_LOG}")
     print(f"Started PID {proc.pid}")
-    print(f"Dashboard {dashboard_url()}")
+    print(f"Dashboard {dashboard_url(port)}")
     print("Open that page. If folders are not set yet, the wizard will ask for source and destination.")
 
 

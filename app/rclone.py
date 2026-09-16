@@ -21,7 +21,7 @@ from app.config import (
 )
 from app import discover, store
 
-log = logging.getLogger("copy-server")
+log = logging.getLogger("nasferry")
 
 RC_WAIT_SECONDS = 40
 
@@ -418,7 +418,7 @@ class RcloneManager:
         if os.name == "nt":
             raise RuntimeError(
                 "Refusing to copy from Windows. File data would pass through this PC. "
-                "Install copy-server on TrueNAS SCALE so it reads the pool locally and writes to the other NAS over the LAN."
+                "Install nasferry on TrueNAS SCALE so it reads the pool locally and writes to the other NAS over the LAN."
             )
 
     async def start_copy(self, dry_run: bool = False) -> dict[str, Any]:
@@ -537,7 +537,7 @@ class RcloneManager:
                 if "job not found" in str(exc).lower():
                     raise RuntimeError(
                         "rclone dropped the job before we could read the result. "
-                        "Restart copy-server and run Scan again (ix-applications is now skipped)."
+                        "Restart nasferry and run Scan again (ix-applications is now skipped)."
                     ) from exc
                 raise
             if status.get("finished"):

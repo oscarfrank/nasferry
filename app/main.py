@@ -17,7 +17,7 @@ from app.rclone import RcloneManager
 from app import discover, store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-log = logging.getLogger("copy-server")
+log = logging.getLogger("nasferry")
 
 settings = Settings()
 manager = RcloneManager(settings)
@@ -30,7 +30,7 @@ async def lifespan(_: FastAPI):
     if os.name == "nt":
         log.warning(
             "Running on Windows. File traffic will pass through this PC. "
-            "Deploy the container on TrueNAS (or TerraMaster) for a NAS-to-NAS copy."
+            "Run nasferry on TrueNAS so traffic stays NAS to NAS."
         )
     await manager.start_daemon()
     if settings.auto_start:
@@ -45,7 +45,7 @@ async def lifespan(_: FastAPI):
     await manager.stop_daemon()
 
 
-app = FastAPI(title="Zeus copy-server", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="nasferry", version="1.0.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
