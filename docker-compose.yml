@@ -1,0 +1,19 @@
+services:
+  copy-server:
+    build: .
+    container_name: copy-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      # TrueNAS dataset that should be mirrored. Keep :ro so the backup
+      # cannot write back to the source.
+      - ${SOURCE_HOST_PATH}:/source:ro
+      - copy-data:/data
+
+volumes:
+  copy-data:
