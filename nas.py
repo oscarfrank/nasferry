@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -82,6 +84,9 @@ def load_env_file(root: Path) -> None:
             os.environ[key] = value
 
 
+RC_PORT = 5572
+
+
 def listen_port() -> int:
     raw = os.environ.get("COPY_SERVER_PORT") or os.environ.get("PUBLIC_PORT") or "8080"
     try:
@@ -93,15 +98,119 @@ def listen_port() -> int:
     return port
 
 
-def port_in_use(port: int) -> bool:
+def port_listening(port: int) -> bool:
     sock = socket.socket()
+    sock.settimeout(0.4)
     try:
-        sock.bind(("0.0.0.0", port))
-    except OSError:
+        sock.connect(("127.0.0.1", port))
         return True
+    except OSError:
+        return False
     finally:
         sock.close()
-    return False
+
+
+def _cmdline(pid: int) -> str:
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
+
+
+def pids_listening(port: int) -> list[int]:
+    found: list[int] = []
+    try:
+        out = subprocess.check_output(
+            ["ss", "-ltnp", f"sport = :{port}"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        found.extend(int(match) for match in re.findall(r"pid=(\d+)", out))
+    except (FileNotFoundError, subprocess.CalledProcessError, ValueError):
+        try:
+            out = subprocess.check_output(
+                ["lsof", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            found.extend(int(line) for line in out.split() if line.isdigit())
+        except (FileNotFoundError, subprocess.CalledProcessError, ValueError):
+            pass
+    return list(dict.fromkeys(found))
+
+
+def matching_pids(*needles: str) -> list[int]:
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return []
+    found: list[int] = []
+    me = os.getpid()
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid == me:
+            continue
+        cmd = _cmdline(pid)
+        if any(needle in cmd for needle in needles):
+            found.append(pid)
+    return found
+
+
+def kill_tree(pid: int) -> None:
+    if pid <= 1 or pid == os.getpid():
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pid, sig)
+        except OSError:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                return
+        for _ in range(20):
+            if not pid_alive(pid):
+                return
+            time.sleep(0.15)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def reap_leftovers(port: int) -> None:
+    """Kill this app's previous uvicorn/rclone even if the pid file is stale."""
+    victims: list[int] = []
+    pid = current_pid()
+    if pid:
+        victims.append(pid)
+    for holder in pids_listening(port):
+        if "uvicorn app.main:app" in _cmdline(holder) or holder == pid:
+            victims.append(holder)
+    for holder in pids_listening(RC_PORT):
+        cmd = _cmdline(holder)
+        if "rclone" in cmd:
+            victims.append(holder)
+    victims.extend(
+        matching_pids(
+            "uvicorn app.main:app",
+            "--rc-addr 127.0.0.1:5572",
+            "--rc-addr=127.0.0.1:5572",
+        )
+    )
+    seen: set[int] = set()
+    for victim in victims:
+        if victim in seen or victim == os.getpid():
+            continue
+        seen.add(victim)
+        print(f"Stopping leftover PID {victim}")
+        kill_tree(victim)
+    PID_FILE.unlink(missing_ok=True)
+    for _ in range(25):
+        if not port_listening(port) and not port_listening(RC_PORT):
+            return
+        time.sleep(0.2)
 
 
 def dashboard_url(port: int | None = None) -> str:
@@ -134,20 +243,10 @@ def current_pid() -> int | None:
 
 
 def stop() -> None:
-    pid = current_pid()
-    if not pid:
-        print("nasferry is not running")
-        PID_FILE.unlink(missing_ok=True)
-        return
-    os.kill(pid, 15)
-    for _ in range(20):
-        if not pid_alive(pid):
-            break
-        time.sleep(0.2)
-    if pid_alive(pid):
-        os.kill(pid, 9)
-    PID_FILE.unlink(missing_ok=True)
-    print(f"Stopped PID {pid}")
+    root = app_root()
+    load_env_file(root)
+    reap_leftovers(listen_port())
+    print("Stopped")
 
 
 def status() -> None:
@@ -210,8 +309,13 @@ def install_python(root: Path) -> Path:
         get_pip = RUNTIME / "get-pip.py"
         urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip)
         run([str(py), str(get_pip)])
+    marker = VENV / ".deps"
+    req = (root / "requirements.txt").read_text(encoding="utf-8")
+    if marker.is_file() and marker.read_text(encoding="utf-8") == req:
+        return VENV / "bin" / "uvicorn"
     print("Installing Python packages ...")
     run([str(pip), "install", "-r", str(root / "requirements.txt")])
+    marker.write_text(req, encoding="utf-8")
     return VENV / "bin" / "uvicorn"
 
 
@@ -258,19 +362,13 @@ def start() -> None:
     install_rclone()
     uvicorn = install_python(root)
     clear_stale_errors()
-    if current_pid():
-        print("Restarting ...")
-        stop()
-    busy = True
-    for _ in range(15):
-        if not port_in_use(port):
-            busy = False
-            break
-        time.sleep(0.2)
-    if busy:
+    print("Restarting ..." if current_pid() or port_listening(port) else "Starting ...")
+    reap_leftovers(port)
+    strangers = pids_listening(port)
+    if strangers:
         die(
-            f"Port {port} is already in use. Set PUBLIC_PORT in {root / '.env'} "
-            "to a free port, then run this command again."
+            f"Port {port} is still in use by PID {', '.join(map(str, strangers))} "
+            f"(not nasferry). Set PUBLIC_PORT in {root / '.env'} to a free port."
         )
     env = os.environ.copy()
     env["DATA_DIR"] = str(DATA_DIR)
@@ -288,9 +386,14 @@ def start() -> None:
         start_new_session=True,
     )
     PID_FILE.write_text(str(proc.pid))
-    time.sleep(1)
+    time.sleep(1.2)
     if proc.poll() is not None:
-        die(f"Dashboard exited immediately. See {WEB_LOG}")
+        tail = ""
+        if WEB_LOG.is_file():
+            tail = "\n".join(WEB_LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-40:])
+        die(f"Dashboard exited immediately. Last log lines:\n{tail}")
+    if not port_listening(port):
+        print("Warning: process started but the dashboard port is not accepting connections yet.")
     print(f"Started PID {proc.pid}")
     print(f"Dashboard {dashboard_url(port)}")
     print("Open that page. If folders are not set yet, the wizard will ask for source and destination.")

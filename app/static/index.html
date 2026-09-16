@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>nasferry</title>
-  <link rel="stylesheet" href="/static/styles.css?v=9" />
+  <link rel="stylesheet" href="/static/styles.css?v=11" />
 </head>
 <body>
   <div class="shell">
@@ -188,7 +188,21 @@
           <button id="btn-stop" class="danger" type="button">Stop</button>
         </div>
         <p class="hint">Copy never deletes extras on the destination. Matching sizes are skipped. Folders and skip lists are in Settings (gear).</p>
-        <pre id="test-result" class="log mini hidden"></pre>
+        <div id="test-panel" class="test-panel hidden">
+          <p class="test-headline" id="test-headline">Checking…</p>
+          <div class="test-sides">
+            <div class="test-side" id="test-source-card">
+              <span class="badge source">Source</span>
+              <strong id="test-source-state">—</strong>
+            </div>
+            <div class="test-side" id="test-dest-card">
+              <span class="badge dest">Destination</span>
+              <strong id="test-dest-state">—</strong>
+            </div>
+          </div>
+          <button type="button" class="ghost" id="btn-test-more">More details</button>
+          <pre id="test-more" class="log mini hidden"></pre>
+        </div>
       </article>
     </section>
 
@@ -260,6 +274,6 @@
       </section>
     </aside>
   </div>
-  <script src="/static/app.js?v=9"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>

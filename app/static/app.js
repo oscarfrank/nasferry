@@ -292,12 +292,48 @@ $("btn-stop").addEventListener("click", (event) => {
 $("btn-scan").addEventListener("click", (event) => {
   act(event.currentTarget, () => api("/api/scan/start", { method: "POST" }));
 });
+function testDetail(side, label) {
+  if (!side) return `${label}: no response`;
+  if (side.ok) {
+    const extra = side.entries != null ? `${side.entries} items visible` : "reachable";
+    return `${label}: connected\n  ${side.fs || ""}\n  ${extra}`;
+  }
+  return `${label}: not connected\n  ${side.fs || ""}\n  ${side.error || "unknown error"}`;
+}
+
+function renderTest(result) {
+  const source = result.source || {};
+  const dest = result.dest || {};
+  $("test-panel").classList.remove("hidden");
+  $("test-source-card").classList.toggle("ok", !!source.ok);
+  $("test-source-card").classList.toggle("bad", !source.ok);
+  $("test-dest-card").classList.toggle("ok", !!dest.ok);
+  $("test-dest-card").classList.toggle("bad", !dest.ok);
+  $("test-source-state").textContent = source.ok ? "Connected" : "Not connected";
+  $("test-dest-state").textContent = dest.ok ? "Connected" : "Not connected";
+  if (source.ok && dest.ok) {
+    $("test-headline").textContent = "Both sides are connected.";
+  } else if (!source.ok && !dest.ok) {
+    $("test-headline").textContent = "Neither side could be reached.";
+  } else if (!source.ok) {
+    $("test-headline").textContent = "Backup NAS is connected. This NAS is not.";
+  } else {
+    $("test-headline").textContent = "This NAS is connected. The backup NAS is not.";
+  }
+  $("test-more").textContent = `${testDetail(source, "Source")}\n\n${testDetail(dest, "Destination")}`;
+}
+
 $("btn-test").addEventListener("click", async (event) => {
   await act(event.currentTarget, async () => {
+    $("test-panel").classList.remove("hidden");
+    $("test-headline").textContent = "Checking both sides…";
     const result = await api("/api/test", { method: "POST" });
-    $("test-result").classList.remove("hidden");
-    $("test-result").textContent = JSON.stringify(result, null, 2);
+    renderTest(result);
   });
+});
+$("btn-test-more").addEventListener("click", () => {
+  const open = $("test-more").classList.toggle("hidden");
+  $("btn-test-more").textContent = open ? "More details" : "Hide details";
 });
 $("btn-log").addEventListener("click", () => refreshLog());
 

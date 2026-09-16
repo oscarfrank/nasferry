@@ -193,6 +193,7 @@ class RcloneManager:
         if RCLONE_LOG.exists() and RCLONE_LOG.stat().st_size > 50 * 1024 * 1024:
             RCLONE_LOG.rename(RCLONE_LOG.with_suffix(".log.old"))
 
+        last_error = "rclone did not start"
         args = [
             rclone_bin(),
             "rcd",
@@ -223,13 +224,27 @@ class RcloneManager:
             "--rc-job-expire-interval",
             "1m",
         ]
-        self.process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await self._wait_ready()
-        self._clear_stale_jobs(save=True, rclone_restarted=True)
+        for attempt in range(3):
+            try:
+                self.process = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await self._wait_ready()
+                self._clear_stale_jobs(save=True, rclone_restarted=True)
+                return
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
+                log.warning("rclone rcd start attempt %s failed: %s", attempt + 1, last_error)
+                if self.process and self.process.returncode is None:
+                    self.process.terminate()
+                    try:
+                        await asyncio.wait_for(self.process.wait(), timeout=4)
+                    except asyncio.TimeoutError:
+                        self.process.kill()
+                await asyncio.sleep(0.8)
+        raise RuntimeError(last_error)
 
     async def _wait_ready(self) -> None:
         deadline = time.monotonic() + RC_WAIT_SECONDS

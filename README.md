@@ -64,4 +64,4 @@ Skip TrueNAS Apps / Docker. If the pool root is already an SMB share, Apps will 
 | `admin is not allowed to run sudo` | Local Users → admin → allow sudo. |
 | Dest connection fails | Wrong share/path, or that SMB user cannot write. |
 | Looks idle / 0 B/s | Still checking. Watch the checked count. |
-| Port already in use | Set `PUBLIC_PORT` in `.env` (e.g. `9080`) and run `nas.py` again. |
+| Port already in use / page dead after restart | Copy the new `nas.py` and run it again. Restart now kills leftover uvicorn/rclone instead of abandoning the port. |
